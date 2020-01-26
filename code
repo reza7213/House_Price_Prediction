@@ -1,0 +1,62 @@
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the "../input/" directory.
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+# Any results you write to the current directory are saved as output.
+/kaggle/input/house-prices-advanced-regression-techniques/train.csv
+/kaggle/input/house-prices-advanced-regression-techniques/data_description.txt
+/kaggle/input/house-prices-advanced-regression-techniques/sample_submission.csv
+/kaggle/input/house-prices-advanced-regression-techniques/test.csv
+# Read the data
+X = pd.read_csv('/kaggle/input/house-prices-advanced-regression-techniques/train.csv') 
+X_test = pd.read_csv('/kaggle/input/house-prices-advanced-regression-techniques/test.csv')
+from sklearn.model_selection import train_test_split
+# Remove rows with missing target, separate target from predictors
+X.dropna(axis=0, subset=['SalePrice'], inplace=True)
+y = X.SalePrice
+X.drop(['SalePrice'], axis=1, inplace=True)
+
+# To keep things simple, we'll drop columns with missing values
+cols_with_missing = [col for col in X.columns if X[col].isnull().any()] 
+X.drop(cols_with_missing, axis=1, inplace=True)
+X_test.drop(cols_with_missing, axis=1, inplace=True)
+
+# Break off validation set from training data
+X_train, X_valid, y_train, y_valid = train_test_split(X, y,
+                                                      train_size=0.8, test_size=0.2,
+                                                      random_state=0)
+# All categorical columns
+object_cols = [col for col in X_train.columns if X_train[col].dtype == "object"]
+
+# Columns that will be one-hot encoded
+low_cardinality_cols = [col for col in object_cols if X_train[col].nunique() < 10]
+from sklearn.preprocessing import OneHotEncoder
+house_encoder = OneHotEncoder(handle_unknown='ignore',sparse=False)
+house_cols_train = house_cols_valid = pd.DataFrame(house_encoder.fit_transform(X_train[low_cardinality_cols]))
+house_cols_valid = pd.DataFrame(house_encoder.transform(X_valid[low_cardinality_cols]))
+# One-hot encoding removed index; put it back
+house_cols_train.index = X_train.index
+house_cols_valid.index = X_valid.index
+
+# Remove categorical columns (will replace with one-hot encoding)
+num_X_train = X_train.drop(object_cols, axis=1)
+num_X_valid = X_valid.drop(object_cols, axis=1)
+
+# Add one-hot encoded columns to numerical features
+house_X_train = pd.concat([num_X_train, house_cols_train], axis=1)
+house_X_valid = pd.concat([num_X_valid, house_cols_valid], axis=1)
+from sklearn.ensemble import RandomForestRegressor
+model = RandomForestRegressor(n_estimators=100, random_state=0)
+model.fit(house_X_train, y_train)
+preds = model.predict(house_X_valid)
+preds
+#predictions = model.predict(X_test)
+my_submission = pd.DataFrame({'Id': X_valid.Id, 'SalePrice':preds})
+my_submission.to_csv('submission.csv', index=False)
